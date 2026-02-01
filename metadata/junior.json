@@ -1,0 +1,9 @@
+{
+  "name": "Certificat SkillChain - Junior",
+  "description": "Niveau 0 - Compétences initiales validées sur la blockchain",
+  "image": "https://ipfs.io/ipfs/QmZ4tDuZ2m9fTfzpC3YFmC5m5m5m5m5m5m5m5m5m5m5m5",
+  "attributes": [
+    { "trait_type": "Niveau", "value": 0 },
+    { "trait_type": "Type", "value": "Initial" }
+  ]
+}

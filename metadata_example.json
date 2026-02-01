@@ -1,0 +1,11 @@
+{
+    "name": "Grand Hôtel Parisien",
+    "type": "Hôtel",
+    "value": "500",
+    "hash": "QmDocumentHashSurIPFS...",
+    "previousOwners": ["0x123...", "0x456..."],
+    "createdAt": 1706710000,
+    "lastTransferAt": 1706715000,
+    "description": "Un hôtel de luxe situé au coeur de la blockchain.",
+    "image": "ipfs://QmImageHashSurIPFS..."
+}
