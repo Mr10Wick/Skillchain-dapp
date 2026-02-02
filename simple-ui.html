@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>SkillChain Interface</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; background: #f4f4f9; }
+        .box { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        button { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 16px; }
+        button:hover { background: #0056b3; }
+        input { padding: 8px; width: 70%; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px; }
+        #status { margin-top: 10px; font-weight: bold; }
+    </style>
+    <!-- Import Ethers.js depuis un CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js" type="application/javascript"></script>
+    <script>
+        window.addEventListener('load', () => {
+            // Vérification de l'environnement d'exécution (Fichier local vs Serveur)
+            if (window.location.protocol === 'file:' && !window.ethereum) {
+                const warning = document.createElement('div');
+                warning.style.cssText = "background: #fff3cd; color: #856404; padding: 15px; margin-bottom: 20px; border: 1px solid #ffeeba; border-radius: 5px;";
+                warning.innerHTML = `
+                    <strong>⚠️ Attention : Mode Fichier Local détecté</strong><br>
+                    Pour utiliser MetaMask ici, allez dans <em>Extensions > MetaMask > Détails</em> et activez <strong>"Autoriser l'accès aux URL de fichier"</strong>.<br>
+                    Ensuite, rafraîchissez la page.
+                `;
+                document.body.insertBefore(warning, document.body.firstChild);
+            }
+
+            // Gestion des événements MetaMask (Changement de compte/réseau)
+            if (window.ethereum) {
+                window.ethereum.on('accountsChanged', () => window.location.reload());
+                window.ethereum.on('chainChanged', () => window.location.reload());
+            }
+        });
+    </script>
+</head>
+<body>
+    <h1>SkillChain Dashboard 🏠</h1>
+
+    <div class="box">
+        <h3>1. Connexion</h3>
+        <button onclick="connectWallet()">Connecter MetaMask</button>
+        <p>Compte: <span id="account">Non connecté</span></p>
+        <p>Solde ETH: <span id="ethBalance">-</span></p>
+        <p style="font-size: 0.8em; color: gray;">Contrat cible : <span id="targetContract">...</span></p>
+    </div>
+
+    <div class="box">
+        <h3>2. Créer une Ressource (Mint)</h3>
+        <input type="text" id="mintType" placeholder="Type (ex: Maison)">
+        <input type="number" id="mintValue" placeholder="Valeur (ex: 100)">
+        <button onclick="mintToken()">Mint Token</button>
+    </div>
+
+    <div class="box">
+        <h3>3. Mon Portefeuille</h3>
+        <p>Solde actuel : <span id="balance">0</span> / 4</p>
+        <button onclick="loadMyTokens()">🔄 Actualiser la liste</button>
+        <div id="tokenList" style="margin-top: 15px;"></div>
+    </div>
+
+    <div id="status"></div>
+
+    <script>
+        // Configuration du contrat
+        const CONTRACT_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; 
+        
+        document.getElementById("targetContract").innerText = CONTRACT_ADDRESS;
+
+        // Interface binaire de l'application (ABI)
+        const ABI = [
+            "function safeMint(address to, string uri, string _type, uint256 _value)",
+            "function balanceOf(address owner) view returns (uint256)",
+            // Fonctions de lecture
+            "function ownerOf(uint256 tokenId) view returns (address)",
+            "function getResourceDetails(uint256 tokenId) view returns (tuple(string resourceType, uint256 value, uint256 createdAt))"
+        ];
+
+        let provider, signer, contract;
+
+        async function connectWallet() {
+            if (!window.ethereum) {
+                // Gestion des restrictions de sécurité locales
+                if (window.location.protocol === 'file:') {
+                    log("❌ Erreur: MetaMask bloqué. Activez 'Autoriser l'accès aux URL de fichier' dans les extensions.");
+                    return alert("Oups ! Sur un fichier local, vous devez autoriser MetaMask à accéder aux URL de fichier (dans les réglages de l'extension).");
+                }
+                log("❌ Erreur: MetaMask introuvable. Veuillez installer l'extension.");
+                return alert("MetaMask non détecté !\n\nSolutions :\n1. Rafraîchissez la page (F5)\n2. Vérifiez que vous n'êtes pas en Navigation Privée\n3. Redémarrez le navigateur");
+            }
+            
+            try {
+                log("⏳ Ouverture de MetaMask... (Vérifiez l'icône du renard en haut à droite !)");
+                // Demande l'accès à MetaMask
+                await window.ethereum.request({ method: 'eth_requestAccounts' });
+                
+                // Configuration du réseau
+                await switchToLocalhost();
+                
+                if (typeof ethers === 'undefined') {
+                    throw new Error("Ethers.js n'est pas chargé. Vérifiez votre connexion internet.");
+                }
+
+                provider = new ethers.providers.Web3Provider(window.ethereum);
+                signer = provider.getSigner();
+                const address = await signer.getAddress();
+                
+                document.getElementById("account").innerText = address;
+
+                // Récupération du solde ETH
+                const ethBalance = await provider.getBalance(address);
+                const ethStr = ethers.utils.formatEther(ethBalance);
+                document.getElementById("ethBalance").innerText = ethStr + " ETH";
+
+                if (ethStr === "0.0") {
+                    document.getElementById("ethBalance").style.color = "red";
+                    document.getElementById("ethBalance").innerHTML += " <br>⚠️ <strong>Mauvais compte !</strong> Sélectionnez le compte avec 10000 ETH dans MetaMask.";
+                }
+                
+                // Connexion au contrat
+                contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+
+                // Vérification du déploiement du contrat
+                const code = await provider.getCode(CONTRACT_ADDRESS);
+                if (code === "0x") {
+                    contract = null; // Désactivation des interactions
+                    log("❌ Erreur: Contrat non déployé ! (Voir alerte)");
+                    alert("⚠️ ERREUR CRITIQUE ⚠️\n\nLe contrat n'est pas déployé à cette adresse !\n\n1. Vérifiez que 'npx hardhat node' tourne.\n2. Redéployez : 'npx hardhat run scripts/deploy.ts --network localhost'.\n3. Copiez la NOUVELLE adresse dans le fichier HTML.");
+                    return;
+                }
+
+                log("✅ Connecté ! Prêt à interagir.");
+                loadMyTokens(); // Chargement initial
+            } catch (err) {
+                console.error(err);
+                if (err.message && (err.message.includes("RPC endpoint") || err.message.includes("too many errors"))) {
+                    log("❌ Erreur RPC: Nœud inaccessible. (Voir alerte)");
+                    alert("⚠️ ERREUR DE CONNEXION RPC ⚠️\n\nMetaMask n'arrive pas à joindre votre Blockchain locale.\n\nSOLUTIONS :\n1. Vérifiez que 'npx hardhat node' tourne.\n2. Dans MetaMask, changez de réseau (ex: Mainnet) puis revenez sur Localhost pour forcer la reconnexion.");
+                } else {
+                    log("❌ Erreur connexion: " + err.message);
+                }
+            }
+        }
+
+        async function mintToken() {
+            if (!contract) return alert("Connecte-toi d'abord !");
+            
+            const type = document.getElementById("mintType").value;
+            const val = document.getElementById("mintValue").value;
+            const address = await signer.getAddress();
+
+            try {
+                log("⏳ Veuillez confirmer la transaction dans MetaMask...");
+                // Exécution de la transaction
+                const tx = await contract.safeMint(address, "ipfs://demo", type, val);
+                log("Transaction envoyée (" + tx.hash.substring(0, 10) + "...). Attente de validation...");
+                await tx.wait(); // Confirmation
+                log("✅ Succès ! Token créé.");
+                loadMyTokens(); // Mise à jour de l'interface
+            } catch (err) {
+                console.error(err);
+                // Gestion des erreurs spécifiques
+                if (err.code === -32002 || (err.message && err.message.includes("-32002"))) {
+                    log("❌ Erreur RPC: Nœud éteint ou inaccessible.");
+                    alert("⚠️ ERREUR DE CONNEXION (-32002) ⚠️\n\nMetaMask n'arrive pas à joindre votre Blockchain locale.\n\nCAUSE :\nVous avez probablement fermé le terminal 'npx hardhat node'.\n\nSOLUTION :\n1. Rouvrez un terminal et lancez 'npx hardhat node'.\n2. Dans un AUTRE terminal, redéployez : 'npx hardhat run scripts/deploy.ts --network localhost'.\n3. Réinitialisez le Nonce dans MetaMask.");
+                } else if (err.message && (err.message.includes("nonce") || err.message.includes("Nonce"))) {
+                    log("❌ Erreur Nonce: Réinitialisez MetaMask !");
+                    alert("⚠️ ERREUR DE SYNCHRONISATION (Nonce) ⚠️\n\nMetaMask est désynchronisé car la blockchain a redémarré.\n\nSOLUTION :\n1. Ouvrez MetaMask\n2. Allez dans Paramètres > Avancés\n3. Cliquez sur 'Effacer les données de l'onglet d'activité'\n4. Réessayez.");
+                } else if (err.reason) {
+                    log("❌ Erreur: " + err.reason);
+                } else {
+                    log("❌ Erreur (voir console)");
+                }
+            }
+        }
+
+        // Récupération des tokens de l'utilisateur
+        // Note : Itération sur les IDs (Alternative à ERC721Enumerable)
+        async function loadMyTokens() {
+            if (!contract) return;
+            const address = await signer.getAddress();
+            const listDiv = document.getElementById("tokenList");
+            
+            try {
+                // Récupération du solde
+                const balance = await contract.balanceOf(address);
+                console.log("Solde NFT:", balance.toString());
+                document.getElementById("balance").innerText = balance.toString();
+
+                // Scan des tokens (ID 0 à 9)
+                listDiv.innerHTML = "<i>Chargement...</i>";
+                let html = "";
+                
+                for(let i = 0; i < 10; i++) {
+                    try {
+                        const owner = await contract.ownerOf(i);
+                        // Normalisation des adresses pour comparaison
+                        if (owner.toLowerCase() === address.toLowerCase()) {
+                            const details = await contract.getResourceDetails(i);
+                            html += `<div style="background:#eef; border-left: 4px solid #007bff; padding:10px; margin-bottom:5px;">
+                                <strong>Token #${i}</strong> : ${details.resourceType} (Valeur: ${details.value})
+                            </div>`;
+                        }
+                    } catch (e) {
+                        // Arrêt si le token n'existe pas
+                        break;
+                    }
+                }
+                listDiv.innerHTML = html || "Vous ne possédez aucune ressource.";
+            } catch (err) {
+                console.error(err);
+                listDiv.innerHTML = `<div style="color:red; background:#fff0f0; padding:10px; border-radius:5px;">⚠️ <strong>Erreur de connexion</strong><br>Impossible de charger vos tokens.<br>Vérifiez que <code>npx hardhat node</code> tourne.</div>`;
+            }
+        }
+
+        // Configuration automatique du réseau
+        async function switchToLocalhost() {
+            const chainId = "0x7a69"; // 31337 en hexadécimal (Hardhat Network)
+            try {
+                await window.ethereum.request({
+                    method: 'wallet_switchEthereumChain',
+                    params: [{ chainId: chainId }],
+                });
+            } catch (error) {
+                // Ajout du réseau si inexistant (Erreur 4902)
+                if (error.code === 4902) {
+                    await window.ethereum.request({
+                        method: 'wallet_addEthereumChain',
+                        params: [{
+                            chainId: chainId,
+                            chainName: 'Hardhat Localhost',
+                            rpcUrls: ['http://127.0.0.1:8545'],
+                            nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }
+                        }],
+                    });
+                } else {
+                    // Propagation des autres erreurs
+                    throw error;
+                }
+            }
+        }
+
+        function log(msg) {
+            document.getElementById("status").innerText = msg;
+        }
+    </script>
+</body>
+</html>

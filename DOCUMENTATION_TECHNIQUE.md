@@ -1,32 +1,65 @@
-# Documentation Technique - Projet SkillChain (Web3 Monopoly)
+# Rapport Technique - Projet SkillChain
 
-## 1. Contexte et Objectifs
-Ce projet consiste en la réalisation d'une **Application Décentralisée (DApp)** nommée **SkillChain**. L'objectif est de simuler un jeu de gestion d'actifs immobiliers (type Monopoly) sur la blockchain, en garantissant des règles métiers strictes via des Smart Contracts.
+## SOMMAIRE
 
-**Les défis techniques relevés :**
-- Gestion de la rareté (limite de possession).
-- Gestion du temps (délais de blocage et de refroidissement).
-- Stockage décentralisé des métadonnées (IPFS).
+1. [Introduction et Cas d'Usage](#1-introduction-et-cas-dusage)
+2. [Architecture Technique](#2-architecture-technique)
+3. [Respect des Contraintes Métiers](#3-respect-des-contraintes-métiers)
+4. [Modèle de Données](#4-modèle-de-données-métadonnées)
+5. [Validation par les Tests Unitaires](#5-validation-par-les-tests-unitaires)
+6. [Contraintes et difficulté du projet](#6-contraintes-et-difficulté-du-projet)
+7. [Sécurité et robustesse](#7-sécurité-et-robustesse)
+8. [Conclusion](#8-conclusion)
+[Annexes](#annexes)
 
 ---
+
+## 1. Introduction et Cas d'Usage
+
+### 1.1 Définition du concept :
+
+Le projet **SkillChain** est une application décentralisée (DApp) inspirée des mécaniques du Monopoly. Elle permet la gestion d'actifs immobiliers numériques sous forme de jetons non fongibles (NFT). Le cas d'usage choisi est la **Tokenisation de ressources urbaines** (Maisons, Gares, Hôtels).
+
+### 1.2 Justification du choix de la Blockchain :
+
+L'utilisation de la blockchain pour ce projet se justifie par trois problématiques concrètes :
+
+*   **Immuabilité** : Une fois acquise, la propriété d'une ressource est gravée sur le registre et ne peut être contestée.
+*   **Transparence** : L'historique des transferts et la valeur des biens sont publics et vérifiables par tous.
+*   **Automatisation** : Les règles de gestion (limites de temps, quotas) sont exécutées de manière autonome par le Smart Contract, sans tiers de confiance.
 
 ## 2. Architecture Technique
 
-Pour mettre en place ce projet, nous avons sélectionné une stack technique moderne et robuste :
+Nous avons mis en place un environnement de développement professionnel pour garantir la qualité du livrable :
 
-| Composant | Technologie | Justification |
-| :--- | :--- | :--- |
-| **Blockchain** | Ethereum (EVM) | Standard industriel, large support d'outils. |
-| **Langage** | Solidity `^0.8.20` | Langage natif pour les Smart Contracts Ethereum. |
-| **Framework** | Hardhat | Environnement de développement complet (compilation, test, déploiement). |
-| **Scripting** | TypeScript | Typage fort pour éviter les erreurs dans les tests et scripts. |
-| **Standard** | ERC721 (OpenZeppelin) | Standard NFT pour garantir l'unicité des propriétés. |
+*   **Smart Contract** : Développé en **Solidity ^0.8.20** en s'appuyant sur les standards sécurisés d'**OpenZeppelin** (`ERC721URIStorage`).
+*   **Framework Hardhat** : Utilisé pour la compilation, le déploiement sur réseau local et l'exécution des tests unitaires.
+*   **Environnement Node.js** : Stabilisé en version **v20 (LTS)** pour assurer la compatibilité des dépendances sur Mac M2 Pro.
+*   **IPFS** : Utilisation pour le stockage décentralisé des images et métadonnées afin de respecter la contrainte d'intégrité des données.
 
----
+## 3. Respect des Contraintes Métiers
 
-## 3. Modèle de Données (Métadonnées)
+Le projet valide l'intégralité des six contraintes imposées par le cahier des charges :
 
-Conformément aux contraintes du Web3, les données lourdes ne sont pas stockées sur la Blockchain (coût de gaz trop élevé) mais sur **IPFS**. Le Smart Contract stocke uniquement l'URI vers un fichier JSON structuré respectant le format imposé :
+### 3.1 Tokenisation et Niveaux (Règle 1) :
+Chaque ressource est un NFT unique. Nous avons implémenté trois types de ressources (Junior/Maison, Intermédiaire/Gare, Expert/Hôtel) via le mapping `resourceDetails`.
+
+### 3.2 Échanges et Transferts (Règle 2) :
+La fonction `transferFrom` surcharge le transfert standard pour y injecter nos validations de temps et de limites.
+
+### 3.3 Limite de Possession (Règle 3) :
+Grâce au modifier `checkLimit`, le contrat vérifie que `balanceOf(user) < 4` avant toute transaction. Si un utilisateur tente d'acquérir une 5ème ressource, la transaction est annulée avec un message d'erreur explicite.
+
+### 3.4 Contraintes Temporelles (Règle 4) :
+
+*   **Cooldown (5 min)** : Un mapping `lastActionTimestamp` enregistre l'heure de la dernière action. Un nouvel échange n'est possible que si 5 minutes se sont écoulées.
+*   **Lock Temporaire (10 min)** : À chaque acquisition, le jeton est verrouillé via `tokenLockedUntil`. Cela empêche la spéculation immédiate.
+
+## 4. Modèle de Données (Métadonnées)
+
+Les métadonnées respectent strictement le format JSON imposé. Elles incluent l'historique des propriétaires et le lien vers le document certifié via un hash IPFS.
+
+**Extrait du fichier JSON :**
 
 ```json
 {
@@ -68,7 +101,7 @@ La gestion du temps est assurée par `block.timestamp` et deux mappings :
 
 ```solidity
 // Vérification du Lock avant transfert
-require(block.timestamp >= tokenLockedUntil[tokenId], "Lock: Ce token est verrouille...");
+require(block.timestamp >= tokenLockedUntil[tokenId], "Lock: Token verrouille.");
 ```
 
 ---

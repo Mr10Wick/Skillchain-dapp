@@ -2,6 +2,8 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract SkillChain is ERC721URIStorage, Ownable {
@@ -18,7 +20,7 @@ contract SkillChain is ERC721URIStorage, Ownable {
     // Mapping pour savoir quand un token spécifique est débloqué (Lock temporaire)
     mapping(uint256 => uint256) public tokenLockedUntil;
 
-    // Structure pour stocker des infos on-chain (optionnel, car le reste est sur IPFS)
+    // Stockage des métadonnées on-chain
     struct ResourceInfo {
         string resourceType;
         uint256 value;
@@ -65,21 +67,30 @@ contract SkillChain is ERC721URIStorage, Ownable {
         // Application du Lock temporaire sur le token
         tokenLockedUntil[tokenId] = block.timestamp + LOCK_TIME;
         
-        // Mise à jour du cooldown global de l'utilisateur (si applicable au mint)
+        // Mise à jour du cooldown global
         // lastActionTimestamp[to] = block.timestamp; 
     }
 
     /**
-     * @dev Transfert de token avec vérification des contraintes.
-     * Surcharge de la fonction standard ERC721 pour intégrer nos règles.
+     * @dev Surcharge de transferFrom pour appliquer les règles sur les transferts.
+     * Cela protège aussi safeTransferFrom qui appelle transferFrom en interne.
      */
-    function transferToken(address from, address to, uint256 tokenId) public checkCooldown checkLimit(to) {
-        require(block.timestamp >= tokenLockedUntil[tokenId], "Lock: Ce token est verrouille temporairement apres son acquisition.");
-        
-        // Utilisation de safeTransferFrom standard
-        safeTransferFrom(from, to, tokenId);
+    function transferFrom(address from, address to, uint256 tokenId) public override(ERC721, IERC721) checkCooldown checkLimit(to) {
+        require(block.timestamp >= tokenLockedUntil[tokenId], "Lock: Token verrouille.");
+        super.transferFrom(from, to, tokenId);
+        _updateConstraints(tokenId);
+    }
 
-        // Mise à jour des contraintes après transfert
+    /**
+     * @dev Surcharge de safeTransferFrom pour appliquer les règles.
+     */
+    function safeTransferFrom(address from, address to, uint256 tokenId, bytes memory data) public override(ERC721, IERC721) checkCooldown checkLimit(to) {
+        require(block.timestamp >= tokenLockedUntil[tokenId], "Lock: Token verrouille.");
+        super.safeTransferFrom(from, to, tokenId, data);
+        _updateConstraints(tokenId);
+    }
+
+    function _updateConstraints(uint256 tokenId) private {
         lastActionTimestamp[msg.sender] = block.timestamp; // Cooldown pour l'expéditeur
         tokenLockedUntil[tokenId] = block.timestamp + LOCK_TIME; // Nouveau lock pour le nouveau propriétaire
     }

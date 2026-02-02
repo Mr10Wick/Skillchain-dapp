@@ -66,7 +66,6 @@ export interface SkillChainInterface extends Interface {
       | "tokenURI"
       | "transferFrom"
       | "transferOwnership"
-      | "transferToken"
   ): FunctionFragment;
 
   getEvent(
@@ -171,10 +170,6 @@ export interface SkillChainInterface extends Interface {
     functionFragment: "transferOwnership",
     values: [AddressLike]
   ): string;
-  encodeFunctionData(
-    functionFragment: "transferToken",
-    values: [AddressLike, AddressLike, BigNumberish]
-  ): string;
 
   decodeFunctionResult(
     functionFragment: "COOLDOWN_TIME",
@@ -251,10 +246,6 @@ export interface SkillChainInterface extends Interface {
   ): Result;
   decodeFunctionResult(
     functionFragment: "transferOwnership",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "transferToken",
     data: BytesLike
   ): Result;
 }
@@ -516,12 +507,6 @@ export interface SkillChain extends BaseContract {
     "nonpayable"
   >;
 
-  transferToken: TypedContractMethod<
-    [from: AddressLike, to: AddressLike, tokenId: BigNumberish],
-    [void],
-    "nonpayable"
-  >;
-
   getFunction<T extends ContractMethod = ContractMethod>(
     key: string | FunctionFragment
   ): T;
@@ -651,13 +636,6 @@ export interface SkillChain extends BaseContract {
   getFunction(
     nameOrSignature: "transferOwnership"
   ): TypedContractMethod<[newOwner: AddressLike], [void], "nonpayable">;
-  getFunction(
-    nameOrSignature: "transferToken"
-  ): TypedContractMethod<
-    [from: AddressLike, to: AddressLike, tokenId: BigNumberish],
-    [void],
-    "nonpayable"
-  >;
 
   getEvent(
     key: "Approval"

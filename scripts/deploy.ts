@@ -9,7 +9,7 @@ async function main() {
   
   const address = await contract.getAddress();
   console.log("-----------------------------------------------");
-  console.log("PROJET SKILLCHAIN VALIDÉ");
+  console.log("Déploiement terminé avec succès.");
   console.log("Contrat déployé à l'adresse :", address);
   console.log("-----------------------------------------------");
 }
